@@ -1,0 +1,413 @@
+---
+title: "Pitcher X Analysis"
+author: "Jack Weyer"
+date: "4/12/2022"
+output: pdf_document
+editor_options: 
+  chunk_output_type: inline
+---
+```{r}
+library(tidyverse)
+df <- read.csv("C:/Users/jack_/Downloads/Pitcher X Data 2022.csv")
+df = df %>%
+  mutate(Date = as.Date(Date, format='%m/%d/%Y'))
+```
+
+```{r}
+stats <- function(x){
+  x %>%
+  summarise(`SwStr%` = sum(whiff_prob)/n(), n=n(), swingProb = mean(swing_prob), `Whiff%`=sum(whiff_prob)/sum(swing_prob))
+}
+# SwStr% is % of pitches that are whiffs... what we are trying to optimize.. 0.87 correlation with K% (insiderbaseball.com)
+# Whiff% if % of swings that miss
+sum(df$whiff_prob)/sum(df$swing_prob) #RIGHT!!!!!!!!!!!!!!!!!!11
+sum(df$whiff_prob/df$swing_prob) #WRONG!!!!!!!!
+df %>%
+  stats()
+  
+totalxwhiffs = 0.1155503*2716
+#314 total xWhiffs
+
+
+# 11.6 SwStr%... 21st out of 40 qualified pitchers (FanGraphs)
+```
+```{r}
+msBlue = '#0C2C56'
+msGreen = '#005C5C'
+df %>%
+  group_by(Date) %>%
+  summarise(n=n())
+```
+
+
+```{r}
+whiff <- read_csv("C:/Users/jack_/Downloads/stats.csv")
+whiff %>%
+  ggplot(aes(x = reorder(last_name, -whiff_percent), y=whiff_percent, 
+             fill=factor(ifelse(last_name=='X', "Highlighted","Normal"))))+
+  geom_bar(stat='identity')+
+  theme_minimal()+
+  scale_fill_manual(name="last_name", values=c(msGreen,msBlue))+
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = 'none',
+        axis.title.y = element_text(size=14))+
+  scale_y_continuous(labels=scales::percent_format(scale=1))+
+  labs(x='', y='xWhiff% (xWhiffs per Swing)',
+       title = 'Pitcher X was NOT elite when the batter swings (2021 qualifiers)')
+```
+
+```{r}
+swStr <- read_csv("C:/Users/jack_/Downloads/FanGraphs Leaderboard.csv")
+swStr %>%
+  ggplot(aes(x = reorder(Name, -`SwStr%`), y=`SwStr%`, 
+             fill=factor(ifelse(Name=='Pitcher X', "Highlighted","Normal"))))+
+  geom_bar(stat='identity')+
+  theme_minimal()+
+  scale_fill_manual(name="Name", values=c(msGreen,msBlue))+
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = 'none',
+        axis.title.y = element_text(size=14))+
+  labs(x='', y='xSwStr%',
+       title = 'Pitcher X was below average on whiffs overall (2021 qualifiers)')
+```
+
+
+
+```{r}
+makedate <- function(x){
+  return(as.Date(x, format='%m/%d/%Y'))
+}
+```
+
+
+```{r}
+dateRates = df %>%
+  group_by(Date) %>%
+  stats()
+
+Allstar = as.Date('07/13/2021', format='%m/%d/%Y')
+
+
+dateRates %>%
+  ggplot(aes(x=Date, y=`SwStr%`))+
+  geom_point()+
+  geom_line()+
+  #geom_vline(xintercept = Allstar, color='red', size=2)+
+  geom_segment(aes(x=makedate('04/04/2021'), xend=Allstar, y=0.1209653, yend=0.1209653), color= msBlue, size=2)+
+  geom_segment(aes(x=Allstar, xend=makedate('10/03/2021'), y=0.110331, yend=0.110331), color= msGreen, size=2)+
+  scale_y_continuous(labels=scales::percent_format(scale=100))+
+  labs(title="Pitcher X's whiffs per pitch dropped off after the All-Star break",
+       y='xSwStr%')+
+  theme_minimal()
+```
+No noticable trend. Will group by before/after all star game
+```{r}
+df %>%
+  filter(Date > Allstar) %>%
+  summarise(swstr = sum(whiff_prob)/n())
+```
+
+#########################################
+```{r}
+df %>%
+  group_by(Inning) %>%
+  summarise(xSwStr = sum(whiff_prob)/n()) %>%
+  ggplot(aes(x=Inning, y=xSwStr))+
+  geom_point()+
+  geom_line()
+```
+No inning trend
+```{r}
+df %>%
+  group_by(PAofInning) %>%
+  filter(PAofInning<9) %>%
+  summarise(xWhiffRate = n()/sum(whiff_prob)) %>%
+  ggplot(aes(x=PAofInning, y=xWhiffRate))+
+  geom_point()+
+  geom_line()
+```
+Can't say anything from this. Correlated with opposing team batting order
+
+```{r}
+df %>%
+ group_by(BatterSide) %>%
+  stats()
+```
+There is a platoon difference. Better against righties
+
+```{r}
+df %>%
+ group_by(PitchofPA) %>%
+  summarise(xWhiffRate = n()/sum(whiff_prob)) %>%
+  ggplot(aes(x=PitchofPA, y=xWhiffRate))+
+  geom_point()+
+  geom_line()
+```
+TONS of first pitch takes. Should actually consider removing first pitches from df for more actionable insights
+
+```{r}
+countWhiffs = df %>%
+ group_by(Balls, Strikes) %>%
+  stats()
+```
+```{r}
+library(scales)
+countWhiffs %>%
+  ggplot(aes(x=Balls, y=Strikes, fill=`SwStr%`))+
+  geom_tile()+
+  geom_text(aes(label=percent(`SwStr%`, accuracy=1)), color='black')+
+  scale_fill_distiller(palette = 'RdBu',direction=-1)+
+  guides(fill=guide_colourbar(barwidth=.5, barheight = 15))+
+  labs(title="Pitcher X's xSwStr% (Whiffs per Pitch) by Count")+
+  theme_classic()
+```
+
+```{r}
+df %>%
+  group_by(Balls, Strikes) %>%
+  summarise(n=n()) %>%
+  mutate(rate=n/716) %>%
+  ggplot(aes(x=Balls, y=Strikes, fill=rate))+
+  geom_tile()+
+  geom_text(aes(label=percent(`rate`, accuracy=1)), color='black')+
+  scale_fill_distiller(palette = 'RdBu',direction=-1)+
+  guides(fill=guide_colourbar(barwidth=.5, barheight = 15))+
+  labs(title="% of 2021 Plate Appearances that reach given count")+
+  theme_classic()
+```
+
+```{r}
+df %>%
+  group_by(Date, Inning, PAofInning) %>%
+  summarise(n=n())
+```
+716 batters faced
+
+
+
+
+Pitcher's count
+```{r}
+pitcherCount = df[(df$Balls==0 & df$Strikes==1) | 
+                    (df$Balls==0 & df$Strikes==2) | 
+                    (df$Balls==1 & df$Strikes==2) |
+                    (df$Balls==2 & df$Strikes==2),]
+
+pitcherCount %>%
+  stats()
+```
+
+```{r}
+hitterCount = df[(df$Balls==1 & df$Strikes==0) | 
+                    (df$Balls==2 & df$Strikes==0) | 
+                    (df$Balls==2 & df$Strikes==1) |
+                    (df$Balls==3 & df$Strikes==0) |
+                    (df$Balls==3 & df$Strikes==1),]
+
+hitterCount %>%
+  stats()
+```
+
+
+```{r}
+countWhiffs %>%
+  ggplot(aes(x=Balls, y=Strikes, fill=`Whiff%`))+
+  geom_tile()+
+  geom_text(aes(label=percent(`Whiff%`, accuracy=1)), color='black')+
+  scale_fill_distiller(palette = 'RdBu',direction=-1)+
+  guides(fill=guide_colourbar(barwidth=.5, barheight = 15))+
+  labs(title="Pitcher X's xWhiff% (Whiffs per Swing) by Count")+
+  theme_classic()
+```
+
+
+No whiffs on 0 strike counts (same as above)
+```{r}
+swingProbs = df %>%
+  group_by(Balls, Strikes) %>%
+  summarise(Prob = mean(swing_prob))
+```
+```{r}
+swingProbs %>%
+  ggplot(aes(x=Balls, y=Strikes, fill=Prob))+
+  geom_tile()+
+  geom_text(aes(label=percent(Prob,2)), color='black')+
+  scale_fill_viridis_c(option='I')+
+  guides(fill=guide_colourbar(barwidth=.5, barheight = 15))+
+  labs(title="Pitcher X's Swing Probability by Count (2021)")+
+  theme_classic()
+```
+
+```{r}
+countWhiffs %>%
+  ggplot(aes(x=swingProb, y=`SwStr%`))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  labs(title='Higher swing% is associated with more whiffs per pitch')
+```
+
+
+
+Swing probability is at its lowest by far on 0-0 counts (besides 3-0 of course)
+```{r}
+df %>%
+  group_by(Balls, Strikes) %>%
+  summarise(n=n())
+```
+PAs ended on his first pitch only 13% of the time! 
+59% of non-play first pitch's went for strikes... this needs to increase.
+
+```{r}
+df %>%
+  filter(Balls==3, Strikes==2) %>%
+  group_by(PitchType) %>%
+  summarise(n=n())
+```
+```{r}
+df %>%
+  filter(Balls==0, Strikes==0) %>%
+  ggplot(aes(x=PlateSide, y=PlateHeight, color=swing_prob))+
+  coord_fixed(ratio=1)+
+  geom_point(alpha=.8)+
+  scale_color_distiller(palette = 'YlOrRd',direction=1)+
+  guides(color=guide_colourbar(barwidth=.5, barheight = 15))+
+  geom_rect(xmin=(-17/2/12), xmax=17/2/12, ymin=1.5, ymax=3.5, alpha=.005)+
+  labs(title='0-0 outcomes: 51% strike, 36% ball, 13% in play', 
+       color = 'Swing Probability',
+       x='feet',
+       y='feet')+
+  theme_dark()
+```
+# Threw 16/20 3-0 pitches in the zone (75%).. capable of throwing in the zone when needed
+
+
+```{r}
+arsenalByPitch = df %>%
+  group_by(Balls, Strikes, PitchType) %>%
+  summarise(n=n()) %>%
+  mutate(rate = n/sum(n))
+```
+```{r}
+df %>%
+  group_by(Balls, Strikes, PitchType) %>%
+  stats()
+```
+
+
+
+
+
+```{r}
+df %>%
+  filter(Balls==0, Strikes==0) %>%
+ group_by(PitchType) %>%
+  summarise(xWhiffRate = n()/sum(whiff_prob), n=n())
+```
+
+
+STRATEGY... 
+so many takes on first pitch..
+1-0 count (8.8 whiff rate)
+0-1 count (7.3 whiff rate)
+therefore...
+attack the zone first pitch, get called strikes to generate 0-1 counts and thus more whiffs!
+
+Whiff rates are generally higher with more strikes in count
+
+
+#####################Strategy 2... less fastballs############
+
+```{r}
+df %>%
+ group_by(PitchType) %>%
+  stats()
+```
+Arsenal..
+Fastball  40%
+Cutter    29%
+Changeup  16%
+Curveball 15% 
+
+Want more whiffs? Throw more changeups, cutters and less fastballs, curveballs
+
+```{r}
+hittables = df[!(df$Balls==3 & df$Strikes==0),]
+
+hittables = hittables %>%
+  filter(PitchofPA != 1) %>%
+  group_by(PitchType) %>%
+  stats()
+
+hittables %>%
+  ggplot(aes(x=n, y=reorder(PitchType, n), fill=`SwStr%`))+
+  scale_fill_distiller(palette = 'RdBu',direction=-1)+
+  geom_bar(stat='identity')+
+  labs(title='Non 0-0 and 3-0 counts',
+       x = 'Total Pitches (2021)',
+       y='',
+       fill='xSwStr%')+
+  geom_text(aes(label=percent(round(`SwStr%`,3))), hjust=1.3)+
+  theme_classic()
+```
+In non-super low swing probability counts, whiff rate is still worst with X's fastball. His changeup is best here
+
+FB 36%
+Cutter 33%
+Changeup 18%
+Curveball 13%
+
+Curveball.... great 3-2 pitch
+```{r}
+ThreeTwo = df %>%
+  filter(Balls==3, Strikes==2) %>%
+  group_by(PitchType) %>%
+  stats()
+
+ThreeTwo %>%
+  mutate(expextation = sum(n*`SwStr%`))
+```
+3-2 statustics
+Fastball  51%
+Cutter    36%
+Changeup  10%
+Curveball 3%
+
+New-strat
+```{r}
+48*0.09622405 + 42*0.15328203 + 35*0.19529297 + 14*0.16335887
+```
+Two more xWhiffs on the season
+
+
+Only went to it 4 times!!! Huge inefficiency there
+```{r}
+hittables %>%
+  filter(PitchofPA != 1) %>%
+  group_by(PitchType, BatterSide) %>%
+  summarise(xWhiffRate = n()/sum(whiff_prob), n=n(), swingProb = mean(swing_prob), WhiffgivenSwing=mean(whiff_prob_gs))
+```
+
+
+Case study
+```{r}
+df %>%
+  filter(Balls==3, Strikes==1) %>%
+  group_by(PitchType) %>%
+  stats()
+```
+
+```{r}
+df %>%
+  filter(Balls==1, Strikes==2) %>%
+  group_by(PitchType) %>%
+  stats()
+```
+
+```{r}
+df %>%
+  group_by(PitchType) %>%
+  summarise(meanspeed = mean(ReleaseSpeed))
+```
+
